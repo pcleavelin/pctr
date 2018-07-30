@@ -3,17 +3,14 @@
 #include "pctr.h"
 
 int main(int argc, char** argv) {
-    if(argc < 2) {
-        std::cerr << "No file specified\n";
-        return 1;
-    }
-
     PCTR pctr = PCTR();
 
     pctr.initialize(argv[0]);
 
-    int return_value = pctr.execute(argv[1], "main");
+    int return_value = pctr.start(argc, argv);
 
     pctr.dispose();
+
+    std::cout << "returned with " << return_value << "\n";
     return return_value;
 }
