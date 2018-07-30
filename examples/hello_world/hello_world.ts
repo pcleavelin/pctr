@@ -1,4 +1,5 @@
 function main() {
-    log("Hello, World!");
+    out("Hello, World!");
+
     return 0;
 }

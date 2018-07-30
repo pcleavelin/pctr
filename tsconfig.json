@@ -1,0 +1,15 @@
+{
+    "include": [
+        "./pctrlib/**/*",
+        "./examples/**/*",
+    ],
+    "compilerOptions": {
+        "module": "commonjs",
+        "allowSyntheticDefaultImports": true,
+        "types": [],
+        "typeRoots": [
+            "pctrlib"
+        ],
+        "removeComments": true,
+    }
+}
