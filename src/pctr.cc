@@ -141,7 +141,7 @@ void PCTR::ExecuteCallback(const v8::FunctionCallbackInfo<v8::Value>& args) {
     v8::Local<v8::Value> arg2 = args[1];
     v8::String::Utf8Value func(isolate, arg2);
 
-    int rval = PCTR::execute(isolate, isolate->GetCurrentContext(), *filename, *func);
+    int rval = PCTR::execute(isolate, isolate->GetCurrentContext(), *filename, *func, 0, NULL);
 
     args.GetReturnValue().Set(rval);
 }
@@ -216,14 +216,19 @@ int PCTR::start(int argc, char** argv) {
     this->m_MainContext = PCTR::setUpExecutionContext(this->m_Isolate);
     v8::Context::Scope context_scope(this->m_MainContext);
 
-    return this->execute("pctrlib/runtime.js", "start");
+    return this->execute("pctrlib/runtime.js", "start", argc, argv);
 }
 
-int PCTR::execute(const char* filename, const char* func) {
-    return PCTR::execute(this->m_Isolate, this->m_MainContext, filename, func);
+int PCTR::execute(const char* filename, const char* func, int argc, char** argv) {
+    return PCTR::execute(this->m_Isolate, this->m_MainContext, filename, func, argc, argv);
 }
 
-int PCTR::execute(v8::Isolate *isolate, v8::Local<v8::Context> context, const char* filename, const char* func) {
+int PCTR::execute(v8::Isolate *isolate, v8::Local<v8::Context> context, 
+                    const char* filename,
+                    const char* func,
+                    int argc,
+                    char** argv)
+{
     if(filename == nullptr) {
         std::cerr << "Error in PCTR::execute (Null pointer to filename)\n";
         return 1;
@@ -255,7 +260,12 @@ int PCTR::execute(v8::Isolate *isolate, v8::Local<v8::Context> context, const ch
             } else if(main_val.ToLocalChecked()->IsFunction()) {
                 auto main_func = v8::Local<v8::Function>::Cast(main_val.ToLocalChecked());
 
-                auto result = main_func->Call(context, context->Global(), 0, NULL); 
+                v8::Local<v8::Value> args[argc];
+                for(int i=0;i<argc;++i) {
+                    args[i] = v8::String::NewFromUtf8(isolate, argv[i], v8::NewStringType::kNormal).ToLocalChecked();
+                }
+
+                auto result = main_func->Call(context, context->Global(), argc, args); 
                 if(result.IsEmpty()) {
                     PCTR::handleException(try_catch);
                 } else {

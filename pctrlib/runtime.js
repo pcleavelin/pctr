@@ -1,5 +1,10 @@
 function start(...args) {
     out("Runtime.js started!");
 
-    return pctr.execute("examples/hello_world/hello_world.js", "main");
+    if(args.length < 2) {
+        out("Invalid number of arguments");
+        return 1;
+    }
+
+    return pctr.execute(args[1], "main");
 }

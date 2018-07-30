@@ -30,9 +30,8 @@ public:
 
     int start(int argc, char** argv);
 
-    int execute(const char* filename, const char* func);
-
-    static int execute(v8::Isolate *isolate, v8::Local<v8::Context> context, const char* filename, const char* func);
+    int execute(const char* filename, const char* func, int argc, char** argv);
+    static int execute(v8::Isolate *isolate, v8::Local<v8::Context> context, const char* filename, const char* func, int argc, char** argv);
 };
 
 
