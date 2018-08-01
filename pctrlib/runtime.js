@@ -1,3 +1,5 @@
+//#import pctrlib/module.js
+
 function start(...args) {
     out("Runtime.js started!");
 
@@ -6,5 +8,7 @@ function start(...args) {
         return 1;
     }
 
-    return pctr.execute(args[1], "main");
+    var program = pctr.compile(args[1]);
+
+    return program.main(args.slice(1));
 }

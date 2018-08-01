@@ -36,6 +36,14 @@ std::string PCTR::readFileSync(const char* filename) {
     if(file.is_open()) {
         std::string line;
         while(std::getline(file, line)) {
+
+            // Check for inline imports
+            if(line.find("//#import") != std::string::npos) {
+                std::string import_file = line.substr(10);
+                contents += PCTR::readFileSync(import_file.c_str());
+                contents += "\n";
+                continue;
+            }
             contents += line;
         }
     } else {
@@ -56,18 +64,25 @@ void PCTR::OutCallback(const v8::FunctionCallbackInfo<v8::Value>& args) {
     std::cout << *val << "\n";
 }
 
-void PCTR::RequireCallback(const v8::FunctionCallbackInfo<v8::Value>& args) {
+void PCTR::CompileCallback(const v8::FunctionCallbackInfo<v8::Value>& args) {
     if(args.Length() < 1) return;
 
-    std::cout << "C++ Attempting to import module\n";
+    std::cout << "C++ Attempting to compile typescript module\n";
     auto isolate = args.GetIsolate();
     v8::HandleScope scope(isolate);
 
     v8::Local<v8::Value> arg = args[0];
     v8::String::Utf8Value val(isolate, arg);
 
-    std::string fixed_filename = PCTR::fixFilename(*val);
+    // TODO: this whole thing is system dependent. Need to find a cross-platform way
+    // of doing this.
+    std::string command = "third_party/node_modules/typescript/bin/tsc ";
+    command += *val;
+    command += " > output.txt";
 
+    int result = system(command.c_str());
+
+    std::string fixed_filename = PCTR::fixFilename(*val);
     std::string file_contents = PCTR::readFileSync(fixed_filename.c_str());
     auto contents = v8::String::NewFromUtf8(isolate, file_contents.c_str(), v8::NewStringType::kNormal).ToLocalChecked();
 
@@ -161,13 +176,13 @@ v8::Local<v8::Context> PCTR::setUpExecutionContext(v8::Isolate *isolate) {
         v8::String::NewFromUtf8(isolate, "execute"),
         v8::FunctionTemplate::New(isolate, ExecuteCallback)
     );
+    pctr_obj->Set(
+        v8::String::NewFromUtf8(isolate, "compile"),
+        v8::FunctionTemplate::New(isolate, CompileCallback)
+    );
     global->Set(
         v8::String::NewFromUtf8(isolate, "out"),
         v8::FunctionTemplate::New(isolate, OutCallback)
-    );
-    global->Set(
-        v8::String::NewFromUtf8(isolate, "require"),
-        v8::FunctionTemplate::New(isolate, RequireCallback)
     );
     global->Set(isolate, "pctr", pctr_obj);
     global->Set(isolate, "exports", exports_obj);

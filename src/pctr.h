@@ -11,7 +11,7 @@ private:
     v8::Local<v8::Context> m_MainContext;
 
     static void OutCallback(const v8::FunctionCallbackInfo<v8::Value>& args);
-    static void RequireCallback(const v8::FunctionCallbackInfo<v8::Value>& args);
+    static void CompileCallback(const v8::FunctionCallbackInfo<v8::Value>& args);
     static void RecvCallback(const v8::FunctionCallbackInfo<v8::Value>& args);
     static void ExecuteCallback(const v8::FunctionCallbackInfo<v8::Value>& args);
 
