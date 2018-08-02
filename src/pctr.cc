@@ -36,6 +36,14 @@ std::string PCTR::readFileSync(const char* filename) {
     if(file.is_open()) {
         std::string line;
         while(std::getline(file, line)) {
+
+            // Check for inline imports
+            if(line.find("//#import") != std::string::npos) {
+                std::string import_file = line.substr(10);
+                contents += PCTR::readFileSync(import_file.c_str());
+                contents += "\n";
+                continue;
+            }
             contents += line;
         }
     } else {
@@ -56,24 +64,31 @@ void PCTR::OutCallback(const v8::FunctionCallbackInfo<v8::Value>& args) {
     std::cout << *val << "\n";
 }
 
-void PCTR::RequireCallback(const v8::FunctionCallbackInfo<v8::Value>& args) {
+void PCTR::CompileCallback(const v8::FunctionCallbackInfo<v8::Value>& args) {
     if(args.Length() < 1) return;
 
-    std::cout << "C++ Attempting to import module\n";
+    std::cout << "C++ Attempting to compile typescript module\n";
     auto isolate = args.GetIsolate();
     v8::HandleScope scope(isolate);
 
     v8::Local<v8::Value> arg = args[0];
     v8::String::Utf8Value val(isolate, arg);
 
-    std::string fixed_filename = PCTR::fixFilename(*val);
+    // TODO: this whole thing is system dependent. Need to find a cross-platform way
+    // of doing this.
+    std::string command = "third_party/node_modules/typescript/bin/tsc ";
+    command += *val;
+    command += " > output.txt";
 
+    int result = system(command.c_str());
+
+    std::string fixed_filename = PCTR::fixFilename(*val);
     std::string file_contents = PCTR::readFileSync(fixed_filename.c_str());
     auto contents = v8::String::NewFromUtf8(isolate, file_contents.c_str(), v8::NewStringType::kNormal).ToLocalChecked();
 
     v8::TryCatch try_catch(isolate);
 
-    auto context = isolate->GetCurrentContext();//PCTR::setUpExecutionContext(isolate, try_catch);
+    auto context = isolate->GetCurrentContext();
 
     auto script = v8::Script::Compile(context, contents);
     if(script.IsEmpty()) {
@@ -128,7 +143,27 @@ void PCTR::RecvCallback(const v8::FunctionCallbackInfo<v8::Value>& args) {
     args.GetReturnValue().Set(0);
 }
 
-v8::Local<v8::Context> PCTR::setUpExecutionContext(v8::Isolate *isolate, v8::TryCatch &try_catch) {
+void PCTR::ExecuteCallback(const v8::FunctionCallbackInfo<v8::Value>& args) {
+    std::cout << "C++ ExecuteCallback\n";
+
+    if(args.Length() < 2) return;
+    auto isolate = args.GetIsolate();
+    v8::HandleScope scope(isolate);
+
+    v8::Local<v8::Value> arg1 = args[0];
+    v8::String::Utf8Value filename(isolate, arg1);
+
+    v8::Local<v8::Value> arg2 = args[1];
+    v8::String::Utf8Value func(isolate, arg2);
+
+    int rval = PCTR::execute(isolate, isolate->GetCurrentContext(), *filename, *func, 0, NULL);
+
+    args.GetReturnValue().Set(rval);
+}
+
+v8::Local<v8::Context> PCTR::setUpExecutionContext(v8::Isolate *isolate) {
+    v8::TryCatch try_catch(isolate);
+
     // Create the Global Object Template to add an interface from JS to native
     v8::Local<v8::ObjectTemplate> global = v8::ObjectTemplate::New(isolate);
     auto pctr_obj = v8::ObjectTemplate::New(isolate);
@@ -137,13 +172,17 @@ v8::Local<v8::Context> PCTR::setUpExecutionContext(v8::Isolate *isolate, v8::Try
         v8::String::NewFromUtf8(isolate, "recv"),
         v8::FunctionTemplate::New(isolate, RecvCallback)
     );
+    pctr_obj->Set(
+        v8::String::NewFromUtf8(isolate, "execute"),
+        v8::FunctionTemplate::New(isolate, ExecuteCallback)
+    );
+    pctr_obj->Set(
+        v8::String::NewFromUtf8(isolate, "compile"),
+        v8::FunctionTemplate::New(isolate, CompileCallback)
+    );
     global->Set(
         v8::String::NewFromUtf8(isolate, "out"),
         v8::FunctionTemplate::New(isolate, OutCallback)
-    );
-    global->Set(
-        v8::String::NewFromUtf8(isolate, "require"),
-        v8::FunctionTemplate::New(isolate, RequireCallback)
     );
     global->Set(isolate, "pctr", pctr_obj);
     global->Set(isolate, "exports", exports_obj);
@@ -181,23 +220,41 @@ void PCTR::dispose() {
     delete this->m_CreateParams.array_buffer_allocator;
 }
 
-int PCTR::execute(const char* filename, const char* func) {
+int PCTR::start(int argc, char** argv) {
+    if(argc < 2) {
+        std::cerr << "No input file specified!\n";
+        return 1;
+    }
+
+    v8::Isolate::Scope isolate_scope(this->m_Isolate);
+    v8::HandleScope handle_scope(this->m_Isolate);
+    this->m_MainContext = PCTR::setUpExecutionContext(this->m_Isolate);
+    v8::Context::Scope context_scope(this->m_MainContext);
+
+    return this->execute("pctrlib/runtime.js", "start", argc, argv);
+}
+
+int PCTR::execute(const char* filename, const char* func, int argc, char** argv) {
+    return PCTR::execute(this->m_Isolate, this->m_MainContext, filename, func, argc, argv);
+}
+
+int PCTR::execute(v8::Isolate *isolate, v8::Local<v8::Context> context, 
+                    const char* filename,
+                    const char* func,
+                    int argc,
+                    char** argv)
+{
     if(filename == nullptr) {
         std::cerr << "Error in PCTR::execute (Null pointer to filename)\n";
         return 1;
     }
 
-    v8::TryCatch try_catch(this->m_Isolate);
+    v8::TryCatch try_catch(isolate);
 
-    v8::Isolate::Scope isolate_scope(this->m_Isolate);
-    v8::HandleScope handle_scope(this->m_Isolate);
-    v8::Local<v8::Context> context = PCTR::setUpExecutionContext(this->m_Isolate, try_catch);
-    v8::Context::Scope context_scope(context);
-
-    auto js_source = this->readFileSync(filename);
+    auto js_source = PCTR::readFileSync(filename);
 
     auto source =
-        v8::String::NewFromUtf8(this->m_Isolate, js_source.c_str(), v8::NewStringType::kNormal);
+        v8::String::NewFromUtf8(isolate, js_source.c_str(), v8::NewStringType::kNormal);
     if(source.IsEmpty()) {
         PCTR::handleException(try_catch);
         return 1;
@@ -211,14 +268,19 @@ int PCTR::execute(const char* filename, const char* func) {
         if(script_result.IsEmpty()) {
             PCTR::handleException(try_catch);
         } else {
-            auto main_name = v8::String::NewFromUtf8(this->m_Isolate, func, v8::NewStringType::kNormal).ToLocalChecked();
+            auto main_name = v8::String::NewFromUtf8(isolate, func, v8::NewStringType::kNormal).ToLocalChecked();
             auto main_val = context->Global()->Get(context, main_name);
             if(main_val.IsEmpty()) {
                 PCTR::handleException(try_catch);
             } else if(main_val.ToLocalChecked()->IsFunction()) {
                 auto main_func = v8::Local<v8::Function>::Cast(main_val.ToLocalChecked());
 
-                auto result = main_func->Call(context, context->Global(), 0, NULL); 
+                v8::Local<v8::Value> args[argc];
+                for(int i=0;i<argc;++i) {
+                    args[i] = v8::String::NewFromUtf8(isolate, argv[i], v8::NewStringType::kNormal).ToLocalChecked();
+                }
+
+                auto result = main_func->Call(context, context->Global(), argc, args); 
                 if(result.IsEmpty()) {
                     PCTR::handleException(try_catch);
                 } else {
@@ -227,8 +289,10 @@ int PCTR::execute(const char* filename, const char* func) {
                     return return_val->Int32Value();
                 }
             } else {
-                std::cerr << "No main function found\n";
+                std::cerr << "No '" << func << "' function found\n";
             }
         }
     }
+
+    return 1;
 }
