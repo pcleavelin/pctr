@@ -1,31 +1,33 @@
+"use strict";
 //#import pctrlib/pctr.js
-
-export class fs {
-    public static readFileSync(file: string): string {
+exports.__esModule = true;
+var fs = /** @class */ (function () {
+    function fs() {
+    }
+    fs.readFileSync = function (file) {
         var result = pctr.recv(ERecvType.FILE_READ, file);
-
-        if(typeof result === 'string') {
+        if (typeof result === 'string') {
             return result;
-        } else {
+        }
+        else {
             throw "Couldn't read file";
         }
-    }
-
-    public static fileExists(file: string): boolean {
+    };
+    fs.fileExists = function (file) {
         // TODO: call dedicated C++ function to check if a file exists
-        out(`checking if ${file} exists`);
-        return typeof pctr.recv(ERecvType.FILE_READ, file) === 'string';
-    }
-
-    public static directoryExists(file: string): boolean {
+        out("checking if " + file + " exists");
+        return typeof pctr.recv(ERecvType.FILE_READ, file) == 'string';
+    };
+    fs.directoryExists = function (file) {
         // TODO: call dedicated C++ function to check if a directory exists
         //return typeof pctr.recv(ERecvType.FILE_READ, file) == 'string';
         return true;
-    }
-
-    public static createDirectory(file: string): void {
+    };
+    fs.createDirectory = function (file) {
         // TODO: call dedicated C++ function to check if a directory exists
         //return typeof pctr.recv(ERecvType.FILE_READ, file) == 'string';
         throw "Not implemented";
-    }
-}
+    };
+    return fs;
+}());
+exports.fs = fs;

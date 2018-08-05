@@ -10,6 +10,6 @@
         "typeRoots": [
             "pctrlib"
         ],
-        "removeComments": true,
+        "removeComments": false,
     }
 }

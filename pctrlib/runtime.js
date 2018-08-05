@@ -1,5 +1,3 @@
-//#import pctrlib/module.js
-
 function start(...args) {
     out("Runtime.js started!");
 
@@ -8,7 +6,11 @@ function start(...args) {
         return 1;
     }
 
-    var program = pctr.compile(args[1]);
+    var fs = require("pctrlib/fs.ts");
+
+    var program = compile(args[1], fs.fs.readFileSync(args[1]));
 
     return program.main(args.slice(1));
 }
+
+//#import pctrlib/module.js

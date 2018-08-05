@@ -1,6 +1,10 @@
 import { fs } from './pctrlib/fs.ts';
 
-export function main(...args) {
-    var contents = fs.readFileSync("readme.md");
-    out(contents);
+function main(...args) {
+    if(fs.fileExists("readdme.md")) {
+        var contents = fs.readFileSync("readme.md");
+        out(contents);
+    } else {
+        out("File doesn't exist!");
+    }
 }
