@@ -45,6 +45,7 @@ std::string PCTR::readFileSync(const char* filename) {
                 continue;
             }
             contents += line;
+            contents += "\n";
         }
     } else {
         std::cerr << "could not find file " << filename << "\n";
@@ -65,42 +66,35 @@ void PCTR::OutCallback(const v8::FunctionCallbackInfo<v8::Value>& args) {
 }
 
 void PCTR::CompileCallback(const v8::FunctionCallbackInfo<v8::Value>& args) {
-    if(args.Length() < 1) return;
+    if(args.Length() < 2) return;
 
     std::cout << "C++ Attempting to compile typescript module\n";
     auto isolate = args.GetIsolate();
     v8::HandleScope scope(isolate);
 
-    v8::Local<v8::Value> arg = args[0];
-    v8::String::Utf8Value val(isolate, arg);
+    v8::Local<v8::Value> name_arg = args[0];
+    v8::Local<v8::Value> contents_arg = args[1];
 
-    // TODO: this whole thing is system dependent. Need to find a cross-platform way
-    // of doing this.
-    std::string command = "third_party/node_modules/typescript/bin/tsc ";
-    command += *val;
-    command += " > output.txt";
-
-    int result = system(command.c_str());
-
-    std::string fixed_filename = PCTR::fixFilename(*val);
-    std::string file_contents = PCTR::readFileSync(fixed_filename.c_str());
-    auto contents = v8::String::NewFromUtf8(isolate, file_contents.c_str(), v8::NewStringType::kNormal).ToLocalChecked();
+    //std::string file_contents = PCTR::readFileSync(*val);
+    //auto contents = v8::String::NewFromUtf8(isolate, file_contents.c_str(), v8::NewStringType::kNormal).ToLocalChecked();
 
     v8::TryCatch try_catch(isolate);
 
-    auto context = isolate->GetCurrentContext();
+    auto module_context = isolate->GetCurrentContext();
 
-    auto script = v8::Script::Compile(context, contents);
+    auto script = v8::Script::Compile(v8::Local<v8::String>::Cast(contents_arg), v8::Local<v8::String>::Cast(name_arg));
     if(script.IsEmpty()) {
         PCTR::handleException(try_catch);
     } else {
-        auto script_result = script.ToLocalChecked()->Run(context);
+        auto script_result = script->Run(module_context);
         if(script_result.IsEmpty()) {
             PCTR::handleException(try_catch);
             std::cerr << "Couldn't import module\n";
         } else {
+            args.GetReturnValue().Set(module_context->Global());
+            /*
             auto exports_name = v8::String::NewFromUtf8(isolate, "exports", v8::NewStringType::kNormal).ToLocalChecked();
-            auto exports_val = context->Global()->Get(context, exports_name);
+            auto exports_val = module_context->Global()->Get(module_context, exports_name);
             if(exports_val.IsEmpty()) {
                 PCTR::handleException(try_catch);
             } else {
@@ -109,15 +103,15 @@ void PCTR::CompileCallback(const v8::FunctionCallbackInfo<v8::Value>& args) {
                     std::cerr << "Error when importing module (undefined)\n";
                 } else {
                     std::cout << "Returning " << *rval << " to JS\n";
-                    args.GetReturnValue().Set(rval);
+                    args.GetReturnValue().Set(module_context->Global());
                 }
-            }
+            }*/
         }
     }
 }
 
 void PCTR::RecvCallback(const v8::FunctionCallbackInfo<v8::Value>& args) {
-    std::cout << "C++ RecvCallback\n";
+    //std::cout << "C++ RecvCallback\n";
 
     if(args.Length() < 2) return;
     auto isolate = args.GetIsolate();
@@ -129,7 +123,7 @@ void PCTR::RecvCallback(const v8::FunctionCallbackInfo<v8::Value>& args) {
     v8::Local<v8::Value> arg2 = args[1];
     v8::String::Utf8Value data(isolate, arg2);
 
-    std::cout << "msg_type: " << *msg_type << ", data: " << *data << "\n";
+    //std::cout << "msg_type: " << *msg_type << ", data: " << *data << "\n";
 
     if(std::string(*msg_type) == "0") {
         std::string file_contents = PCTR::readFileSync(*data);
@@ -140,7 +134,7 @@ void PCTR::RecvCallback(const v8::FunctionCallbackInfo<v8::Value>& args) {
         return;
     }
 
-    args.GetReturnValue().Set(0);
+    args.GetReturnValue().SetUndefined();
 }
 
 void PCTR::ExecuteCallback(const v8::FunctionCallbackInfo<v8::Value>& args) {
@@ -192,8 +186,13 @@ v8::Local<v8::Context> PCTR::setUpExecutionContext(v8::Isolate *isolate) {
 
 void PCTR::handleException(v8::TryCatch &try_catch) {
     v8::Local<v8::Value> exception = try_catch.Exception();
+    auto trace = try_catch.Message();
     v8::String::Utf8Value exception_str(exception);
-    std::cerr << "Exception occurred: " << *exception_str << "\n";
+
+    v8::String::Utf8Value thing(trace->GetScriptResourceName());
+    v8::String::Utf8Value source_line(trace->GetSourceLine());
+
+    std::cerr << *thing << " '" << *source_line << "' Line " << trace->GetLineNumber() << " Exception occurred: " << *exception_str << "\n" << "\n";
 }
 
 void PCTR::initialize(const char* exec_path) {
@@ -260,11 +259,11 @@ int PCTR::execute(v8::Isolate *isolate, v8::Local<v8::Context> context,
         return 1;
     }
 
-    auto script = v8::Script::Compile(context, source.ToLocalChecked());
+    auto script = v8::Script::Compile(source.ToLocalChecked(), v8::String::NewFromUtf8(isolate, filename, v8::NewStringType::kNormal).ToLocalChecked());
     if(script.IsEmpty()) {
         PCTR::handleException(try_catch);
     } else {
-        auto script_result = script.ToLocalChecked()->Run(context);
+        auto script_result = script->Run(context);
         if(script_result.IsEmpty()) {
             PCTR::handleException(try_catch);
         } else {

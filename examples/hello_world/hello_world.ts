@@ -1,4 +1,4 @@
-export function main(...args) {
+function main(...args) {
     out("Hello, World!");
     out("Here are the arguments: " + args);
 
